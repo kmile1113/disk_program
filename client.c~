@@ -1,0 +1,258 @@
+#include "my.h"
+
+#define R 		1 //注册 register
+#define L 		2 //登录 login
+#define LIST	3 //列表
+#define GET		4 //下载 
+#define PUT		5 //上传
+#define H  		6//查询历史
+#define Q  		7//退出 quit
+//注意 服务和客户端两端的请求类型宏定义 要一样
+
+typedef struct 
+{
+	int type;//标志位 请求的类型
+	char name[30];//用户名 
+	char passwd[256];//用户密码
+	char filename[50];//文件名
+	char filedata[100];//文件内容
+	int len;//每次读取文件内容实际读取的块数
+}MSG;
+
+//函数声明
+void menu2();
+
+MSG s = { 0 };//与服务器交互接收和发送的结构体
+int sockfd;//全局
+
+//客户端注册请求
+void doRegister()
+{
+	//总思想:先给结构体赋值,然后将结构体发送给服务器
+	//先装东西,再发送
+	//装东西
+	s.type = R;//代表的是注册请求
+	printf("请输入注册的用户名:\n\n");
+	scanf("%s",s.name);
+	printf("请输入要注册的密码:\n\n");
+	scanf("%s",s.passwd);
+	//发送给服务器
+	send(sockfd, &s, sizeof(s),0);
+	//等待服务器的应答
+	int ret=recv(sockfd, &s, sizeof(s),0);
+	if(ret>0)
+	{printf("%s\n",s.passwd);//将是否注册成功的结果打印输出
+	}else{
+	printf("服务器断开连接\n");
+	exit(-1);
+}
+
+}
+
+//客户端登录请求
+void doLogin()
+{
+	s.type = L;//代表的是登录请求
+	printf("请输入登录的用户名:\n\n");
+	scanf("%s",s.name);
+	printf("请输入要登录的密码:\n\n");
+	scanf("%s",s.passwd);
+	//发送给服务器
+	send(sockfd, &s, sizeof(s),0);
+	//等待服务器的应答
+	int ret=recv(sockfd, &s, sizeof(s),0);
+	if(ret>0){
+	printf("%s\n",s.passwd);//将是否登录成功的结果打印输出
+
+	//如果登录成功,进入菜单界面2
+	if(s.type == 0)
+	{
+		//进入菜单界面二
+		menu2(&s);
+	}
+	}else{
+	printf("服务器断开连接\n");
+	exit(-1);
+}
+}
+
+//客户端下载文件列表请求
+void doGetFileList(int sockfd)
+{
+	s.type = LIST;//代表获取下载列表请求
+	send(sockfd, &s, sizeof(s),0);
+	int count = 0;
+	while(1)
+	{
+		int ret=recv(sockfd, &s, sizeof(s), 0);	
+		if(ret>0){
+			if(s.type == -3)
+			{
+				printf("\n#######获取文件列表完毕!!!#####\n");
+				break;
+			}
+			printf("%s   ", s.filename);
+			count++;
+			if(count == 5)
+				printf("\n");
+		}else{
+		printf("服务器断开连接\n");
+		exit(-1);
+	}
+	}
+}
+void doHistoryRecordRequest(MSG* s,int sockfd)
+{
+	 s->type = H;//查询历史记录请求
+	 send(sockfd, s, sizeof(MSG), 0);
+	 //循环接收服务器的回应
+	 while(1)
+	 {
+	 int ret=recv(sockfd, s, sizeof(MSG), 0);
+	if(ret>0){
+	 if(s->type == -1)
+	 break;
+	 printf("%s\n",s->filedata);
+	 }
+	}else{
+	printf("服务器断开连接\n");
+	exit(-1);
+}
+}
+//下载
+void download(MSG* s,int sockfd){
+	s->type=4;
+	printf("请输入待下载文件:\n");
+	scanf("%s",s->filename);
+	send(sockfd,s,sizeof(MSG),0);
+	while(1){
+		int ret=recv(sockfd,s,sizeof(MSG),0);
+		if(ret>0){
+		if(s->type==-1)
+		{
+			printf("下载失败,没有此文件\n");
+			return;
+		}
+		if(s->type==0)
+			break;
+		}else{
+			printf("服务器断开连接\n");
+			exit(-1);
+		}
+	}
+	printf("下载完毕\n");
+}
+void upload(MSG* s,int sockfd){
+	s->type=5;
+	printf("请输入待上传文件:\n");
+	scanf("%s",s->filename);
+	send(sockfd,s,sizeof(MSG),0);
+	while(1){
+		int ret=recv(sockfd,s,sizeof(MSG),0);
+		if(ret>0){
+		if(s->type==-1)
+		{
+			printf("上传失败,没有此文件\n");
+			return;
+		}
+		if(s->type==0)
+			break;
+		}else{
+			printf("服务器断开连接\n");
+			exit(-1);
+		}
+
+	}
+	printf("上传完毕\n");
+}
+
+void menu2(MSG* s)
+{
+	int n;
+	while(1)
+	{
+		printf("\n/////////////////////////////////////////////////////");
+		printf("\n*****************************************************\n");
+		printf("*           欢　迎　使　用　小  度  网   盘  　    *");
+		printf("\n*****************************************************\n");
+		printf("\n* 1.列表  2.下载文件  3.上传文件 4.历史记录  5.退出*\n");
+		printf("\n*****************************************************\n");
+		printf("/////////////////////////////////////////////////////\n");
+		printf("\n请 输 入 您 的 选 择:\n\n");
+		scanf("%d",&n);
+		switch(n)
+		{
+		case 1:
+			doGetFileList(sockfd);//客户端端下载文件表请求
+			break;
+		case 2:
+			download(s,sockfd);
+			break;
+		case 3:
+			upload(s,sockfd);
+			break;
+		case 4:
+			doHistoryRecordRequest(s,sockfd);
+			break;
+		case 5:
+			printf("网盘即将关闭\n");
+			sleep(1);
+			exit(-1);
+		}
+	}
+}
+
+//界面1
+void menu1()
+{
+	int n;
+	while(1)
+	{
+		printf("\n****************************************\n");
+		printf("*            小  度  网   盘           *");
+		printf("\n****************************************\n");
+		printf("\n*      1.注册    2.登录    3.退出      *\n");
+		printf("\n****************************************\n");
+		printf("\n请 输 入 您 的 选 择:\n\n");
+		scanf("%d",&n);
+		switch(n)
+		{
+		case 1:
+			doRegister();//客户端发送注册请求
+			break;
+		case 2:
+			doLogin();//客户端发送登录请求
+			break;
+		case 3:
+			printf("网盘即将关闭\n");
+			sleep(1);
+			exit(-1);
+		}
+	}
+}
+
+int main(int argc, const char *argv[])
+{
+	if(argc != 3)
+	{
+		printf("忘记传递参数了!! ./client IP Port\n");
+		exit(-1);
+	}
+	//1.创建一个流式套接字
+	sockfd = socket(AF_INET, SOCK_STREAM, 0);
+	if(sockfd == -1)
+	{
+		perror("socket failed");
+		exit(-1);
+	}
+	//2.连接服务器前,提前知道服务器的IP地址和端口号
+	struct sockaddr_in serveraddr = { 0 };
+	serveraddr.sin_family = AF_INET;
+	serveraddr.sin_port = htons(atoi(argv[2]));
+	serveraddr.sin_addr.s_addr = inet_addr(argv[1]);
+	//3.连接服务器 
+	connect(sockfd, (struct sockaddr*)&serveraddr, sizeof(serveraddr));
+	//4.进入菜单界面一
+	menu1();
+	return 0;
+}
